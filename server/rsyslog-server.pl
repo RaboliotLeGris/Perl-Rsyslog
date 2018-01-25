@@ -73,7 +73,7 @@ sub handler {
         chomp $data;
         # Add the received data to the queue
         $q->enqueue($socket->peerhost() . " : " . $data);
-        print $output "ack"
+        print $output "ack";
     }
     print "leaving";
 }
@@ -94,5 +94,4 @@ while (1) {
         print "Unauthorized connection from " . $client->peerhost() . "\n";
     }
 }
-
 $socket->close();
