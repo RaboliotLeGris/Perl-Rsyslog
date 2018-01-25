@@ -12,7 +12,12 @@ use Config::IniFiles;
 use IO::Socket::INET;
 use NetAddr::IP;
 use IO::Handle;
+use Getopt::Long;
 
+#Configuring command line
+Getopt::Long::Configure(qw{no_auto_abbrev no_ignore_case_always});
+my $debug = "";
+GetOptions ('debug|d' => \$debug);
 # auto-flush on socket
 $| = 1; # It's kind of magic
 # Config parameters
@@ -40,18 +45,21 @@ sub getTimestamp {
     # Not the cleanest thing on the Earth but it's "adaptable"
     my $customYear = $year+1900; my $customMonth = $mon + 1;
     $timestamp =~ s/YYYY/$customYear/ig;$timestamp =~ s/MM/$customMonth/ig;$timestamp =~ s/DD/$mday/ig;$timestamp =~ s/HH/$hour/ig;$timestamp =~ s/MM/$min/ig;$timestamp =~ s/SS/$sec/ig;
+    print $timestamp."\n" if $debug;
     return $timestamp; # YYYY-MM-DD HH:MM:SS  aka  2018-1-25 01:59:30
 }
 
 # This function dequeue the logs to write (So the server is not slow down with many I/Os)
 sub logsWriterWorker {
     my $path = $params->val("Server", "logDir") . $params->val("Server", "logName");
+    print $path."\n" if $debug;
     open(my $f, ">>",  $path) or die "Could not open file '$path' $!";
     # The "funny" thing with thread is that you have to flush them ...
     $f->autoflush;
     # Emptying the queue and writing with log the needed information the logs
     while (my $query = $q->dequeue) 
     {
+        print "writing into messages.log"."\n" if $debug;
         print $f getTimestamp() . " : " . "$query\n";
     }
 }
@@ -59,7 +67,7 @@ sub logsWriterWorker {
 # To filter the connexions
 sub isAuthorized {
     my $clientIP = NetAddr::IP->new(shift);
-    print("Checking if $clientIP is authorized\n");
+    print("Checking if $clientIP is authorized\n") if $debug;
     return $clientIP->within($CIDR);
 }
 
@@ -72,26 +80,28 @@ sub handler {
     while (my $data = <$socket>) {
         chomp $data;
         # Add the received data to the queue
+        print "queuying "."\n" if $debug;
         $q->enqueue($socket->peerhost() . " : " . $data);
         print $output "ack";
     }
-    print "leaving";
+    $socket->close();
+    print "Closing connection"."\n" if $debug;
 }
 
 #############################################################################################################
 # Creating the working the write the logs on the logs file
 threads->create(\&logsWriterWorker);
-print "Server waiting for client connection on port " . $params->val("Server", "port") ."\n";
+print "Server waiting for client connection on port " . $params->val("Server", "port") ."\n" if $debug;
 while (1) {
     # Waiting for new connections
     my $client = $socket->accept();
-    print "new client from " . $client->peerhost() . "\n";
+    print "new client from " . $client->peerhost() . "\n" if $debug;
     if (isAuthorized( $client->peerhost() )) {
-        print("Creating thread\n");
+        print("Creating thread\n") if $debug;
         # Creating a dedicated thread to process his logs
         threads->create(\&handler, $client);
     } else {
-        print "Unauthorized connection from " . $client->peerhost() . "\n";
+        print "Unauthorized connection from " . $client->peerhost() . "\n" if $debug;
     }
 }
 $socket->close();
